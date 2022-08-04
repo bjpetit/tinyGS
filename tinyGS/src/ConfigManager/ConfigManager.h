@@ -126,10 +126,13 @@ typedef struct
   uint8_t L_MISO;
   uint8_t L_MOSI;
   uint8_t L_SCK;
-  float L_TCXO_V;
+  float   L_TCXO_V;
   uint8_t RX_EN;
   uint8_t TX_EN;
-  String BOARD;
+  uint8_t ADC_CTL;     // GPIO pin to enable ADC reading
+  uint8_t VBAT_AIN;    // GPIO pin for VBAT monitoring
+  float   VBAT_SCALE;  // potential divider between battery and GPIO pin
+  String  BOARD;
 } board_t;
 
 const uint8_t UNUSED = -1;

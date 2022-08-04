@@ -80,6 +80,7 @@
 #include "time.h"
 #include "src/Mqtt/MQTT_credentials.h"
 #include "src/Improv/tinygs_improv.h"
+#include "src/Power/Battery.h"
 
 
 #if  RADIOLIB_VERSION_MAJOR != (0x07) || RADIOLIB_VERSION_MINOR != (0x04) || RADIOLIB_VERSION_PATCH != (0x00) || RADIOLIB_VERSION_EXTRA != (0x00)
@@ -162,8 +163,10 @@ void setup()
   // make sure to call doLoop at least once before starting to use the configManager
   configManager.doLoop();
   board_t board;
-  if(configManager.getBoardConfig(board))
+  if(configManager.getBoardConfig(board)) {
     pinMode (board.PROG__BUTTON, INPUT_PULLUP);
+    initBatteryMonitoring();
+  }
   displayInit();
   displayShowInitialCredits();
   configManager.delay(1000);
@@ -316,6 +319,8 @@ void loop() {
     displayShowStaMode(configManager.isApMode());
     return;
   }
+
+  checkBattery();
 
   // connected
 
