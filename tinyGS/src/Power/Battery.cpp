@@ -1,9 +1,15 @@
 // Battery.cpp
 // Battery monitoring helpers for tinyGS
 
+#include <stdlib.h>
 #include "Battery.h"
 #include "../ConfigManager/ConfigManager.h"
 #include "../Logger/Logger.h"
+#include <esp_adc_cal.h>
+
+esp_adc_cal_characteristics_t adc_chars;
+#define DEFAULT_VREF 1100
+
 
 // Arduino Framework Battery Writeup
 // https://digitalconcepts.net.au/arduino/index.php?op=Battery
@@ -28,18 +34,20 @@ void initBatteryMonitoring(void)
             // Use 12-bit resolution and 11dB attenuation for ~0-3.6V range
             analogReadResolution(12);
             analogSetAttenuation(ADC_11db);
+            // Characterize ADC for voltage conversion
+            esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_11db, ADC_WIDTH_BIT_12, DEFAULT_VREF, &adc_chars);
         }
         checkBattery(); // Initial read to seed status.vbat
     }
 }
 
 // Drive the ADC control pin to the enabled state (if present) and wait
-// briefly for voltages to stabilise before taking a reading.
+// briefly for voltages to stabilize before taking a reading.
 inline void enableADCReading(board_t board)
 {
     if (board.ADC_CTL != UNUSED) {
         digitalWrite(board.ADC_CTL, ADC_READ_ENABLE);
-        delay(50); // Allow voltage to stabilise before sampling
+        delay(50); // Allow voltage to stabilize before sampling
     }
 }
 
@@ -69,13 +77,17 @@ void checkBattery(void)
 
         enableADCReading(board);
 
-        // Read raw ADC and convert using board-specific scale factor
-        uint16_t raw = analogRead(board.VBAT_AIN);
+        // Read raw ADC
+        int raw = adc1_get_raw(ADC1_CHANNEL_0);
 
         disableADCReading(board);
 
+        //Convert adc_reading to voltage in mV
+        uint32_t voltage = esp_adc_cal_raw_to_voltage(raw, &adc_chars);
+
         // Convert and smooth: seed or simple average with previous value
-        float measured = board.VBAT_SCALE * raw;
+        float measured = (board.VBAT_SCALE * voltage) / 1000.0f; // convert mV to V
+         Log::debug(PSTR("adc raw: %d, voltage: %f V"), raw, measured);
         if (status.vbat == 0.0) {
             status.vbat = measured; // initial seed
         } else {
@@ -87,13 +99,17 @@ void checkBattery(void)
 }
 
 // Convert the current battery voltage status.vbat to a percentage.
-// Assumes a linear discharge curve between 3.0V (0%) and 3.7V (100%).
+// Assumes a linear discharge curve between 3.0V (0%) and 4.15V (100%).
+// Returns 999.0f if the voltage is above 4.2V, indicating charging state.
 float getBatteryPercentage(void)
 {
-    const float maxVoltage = 3.7f; // Voltage at 100%
-    const float minVoltage = 3.0f; // Voltage at 0%
+    const float poweredVoltage = 4.2f; // Voltage above 100%
+    const float maxVoltage = 4.15f; // Voltage at 100%
+    const float minVoltage = 3.5f; // Voltage at 0%
     float voltage = status.vbat;
-    if (voltage >= maxVoltage) {
+    if (voltage >= poweredVoltage) {
+        return 999.0f; // Plugged in / charging
+    } else if (voltage >= maxVoltage) {
         return 100.0f;
     } else if (voltage <= minVoltage) {
         return 0.0f;
